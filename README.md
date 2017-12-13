@@ -1,4 +1,4 @@
-media_converter
+NkCONF
 =====
 
 An OTP application
