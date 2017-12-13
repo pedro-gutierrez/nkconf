@@ -1,0 +1,5 @@
+-ifndef(NKCONF_HRL_).
+-define(NKCONF_HRL_, 1).
+-define(SRV, 'nkconf').
+-define(BASE_DOMAIN, <<"/nkconf">>).
+-endif.
