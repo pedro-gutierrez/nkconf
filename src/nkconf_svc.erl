@@ -38,7 +38,22 @@ objs() -> [
               name => "Conferencing",
               srv_id => ?SRV
             }
-          ].
+          ] ++ make_users( test_usernames() ).
+
+test_usernames() -> 
+    %%[ "pgr", "frr", "cgf", "amf", "amb", "jcg", "sce", "jsj", "vag", "fsj" ].
+    [ "user1", "user2", "user3", "user4", "user5", "user6", "user7", "user8", "user9" ].
+
+make_users( Users ) -> 
+    [ #{ path => nklib_util:to_binary("/users/" ++ U),
+         obj_id => nklib_util:to_binary(U),
+         '_id' => nklib_util:to_binary(U), 
+         <<"user">> => #{
+             name => U,
+             surname => U,
+             password => "1234",
+             email => U ++ "@nkconf"
+            }} || U <- Users ] .
 
 make_service_spec() ->
     Host = nkconf_app:get(listen_ip),

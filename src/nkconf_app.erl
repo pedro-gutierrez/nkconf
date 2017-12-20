@@ -10,18 +10,25 @@ start(_StartType, _StartArgs) ->
         listen_port => {integer, 1, 65535},
         listen_path => basepath,
         listen_secure => boolean,
+        mediasoup => map,
         '__defaults' => #{
           listen_ip => <<"127.0.0.1">>,
           listen_port => 9301,
           listen_path => <<"/">>,
-          listen_secure => false
+          listen_secure => false,
+          mediasoup => #{
+            host => <<"localhost">>,
+            scheme => mediasoup,
+            port => 1803,
+            path => <<"/ms">>
+          }
         }
     },
     case nklib_config:load_env(?APP, Syntax) of
-        {ok, _} ->
-            {ok, Pid} = nkconf_sup:start_link(),
+        {ok, Config} ->
+            {ok, Pid} = nkconf_sup:start_link(Config),
             {ok, Vsn} = application:get_key(?APP, vsn),
-            lager:info("NkCONF v~s has started.", [Vsn]),
+            lager:info("NkCONF v~s has started with config: ~p", [Vsn, Config]),
             {ok, Pid};
         {error, Error} ->
             lager:error("Error parsing config: ~p", [Error]),

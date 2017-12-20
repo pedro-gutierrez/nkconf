@@ -23,6 +23,22 @@ cmd(<<"login">>, #nkreq{srv_id=?SRV, data=#{user_id:=UserId} = Data} = Req) ->
             Other
     end;
 
+cmd(<<"action">>, #nkreq{ data=#{ reqId := ReqId, type := <<"config">> } = _Data}=Req) ->
+    {ok, #{ requestTimeout => 15000,
+            reqId => ReqId, 
+            turnServers => [#{urls => [<<"turns:turn-cluster2.netc.io:443?transport=tcp">>],
+                               credential => <<"nknk">>,
+                               username => <<"turn">>}]}, Req};
+
+
+cmd(<<"action">>, #nkreq{user_id=_UserId}=Req) ->
+    {ok, Req2} = nkconf_mediasoup:send(Req),
+    {ok, #{}, Req2};
+
+cmd(<<"notify">>, #nkreq{user_id=_UserId}=Req) ->
+    {ok, Req2} = nkconf_mediasoup:notify(Req),
+    {ok, #{}, Req2};
+
 cmd(_Cmd, Req) ->
-    lager:error("NKLOG NkCONF Not Implemented ~p", [_Cmd, Req]),
+    lager:error("NKLOG NkCONF Not Implemented ~p, ~p", [_Cmd, Req]),
     {error, not_implemented, Req}.

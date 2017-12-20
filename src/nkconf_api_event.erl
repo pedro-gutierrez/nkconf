@@ -5,18 +5,17 @@
 -include_lib("nkevent/include/nkevent.hrl").
 -include_lib("nkdomain/include/nkdomain.hrl").
 
-event(_ObjType, _Type, _SessId, _Body, _Req) ->
-    lager:warning("NKLOG NkCONF EV ~s ~s ~p", [_ObjType, _Type, _Body]),
+event(<<"nkconf_mediasoup">>, <<"nkconf_mediasoup">>, _, Data, Req) -> 
+    send_event(<<"conferencing">>, Data, Req),
+    ok;
+
+event(ObjType, Type, _, Body, _Req) ->
+    lager:warning("NKLOG NkCONF EV ~p ~p:  ~p", [ObjType, Type, Body]),
     ok.
 
 
-%%send_event(Type, Body, Req) ->
-%%    Event2 = #nkevent{
-%%        class = <<"nkconf">>,
-%%        subclass = Type,
-%%        type = Type,
-%%        body = Body
-%%    },
-%%    #nkreq{session_pid=Pid} = Req,
-%%    nkapi_server:send_event2(Pid, Event2),
-%%    ok.
+send_event(Class, #{ status := Status} = Body, #nkreq{session_pid=Pid}) ->
+    nkapi_server:send_event2(Pid, #nkevent{ class = Class,
+                                      subclass = Status,
+                                      body = maps:without([status], Body)}),
+   ok.
