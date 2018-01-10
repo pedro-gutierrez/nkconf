@@ -5,7 +5,7 @@
 -export([send/1, notify/1, status/0]).
 -export([response/1]).
 -export([connecting/3, connected/3]).
--record(data, {config, callback, ref, pid}).
+-record(data, {ms, callers, rooms, callback, ref, pid}).
 -include_lib("nkservice/include/nkservice.hrl").
 -include_lib("nkdomain/include/nkdomain.hrl").
 -include_lib("nkevent/include/nkevent.hrl").
@@ -16,8 +16,12 @@ callback_mode() ->
 start_link(Config) ->
     gen_statem:start_link({local, ?MODULE}, ?MODULE, [Config], []).
 
-init([#{ mediasoup := Config}]) ->
-    {ok, connecting, #data{config=Config,
+init([#{ mediasoup := MediasoupConfig,
+         callers := CallersConfig,
+         rooms := RoomsConfig }]) ->
+    {ok, connecting, #data{ms=MediasoupConfig,
+                           callers=CallersConfig,
+                           rooms=RoomsConfig,
                            ref=undefined,
                            pid=undefined,
                            callback={ ?MODULE, response, []}}, [{{timeout, init},0,connect}]}.
@@ -27,11 +31,12 @@ connect(#data{ref=Ref}=Data) when Ref =/= undefined ->
     erlang:demonitor(Ref),
     connect(Data#data{ref=undefined});
 
-connect(#data{config=Config, callback=CB}=Data) ->
-    case nkconf_mediasoup_protocol:start(#{ config => Config}, CB) of
+connect(#data{ms=MediasoupConfig, rooms=Rooms, callback=CB}=Data) ->
+    case nkconf_mediasoup_protocol:start(#{ config => MediasoupConfig}, CB) of
         {ok, Pid} ->
             Ref = erlang:monitor(process, Pid),
             info(connecting, {connected, Pid, Ref}),
+            create_rooms(Pid, Rooms),
             {next_state, connected, Data#data{ref=Ref, pid=Pid}};
         {error, Error} ->
             warn(connecting, {error, Error}),
@@ -98,6 +103,12 @@ connected(cast, {response, [ok, Pid, #{ <<"status">> := Status,
     Ev = event(UserId, EvBody3),
     nkevent:send(Ev),
     {next_state, connected, Data};
+
+connected(cast, {response, [ok, Pid, #{ <<"status">> := Status,
+                                        <<"method">> := Cmd 
+                                      }]}, #data{pid=Pid}=Data) -> 
+    debug(connected, {Status, Pid, Cmd}),
+    {keep_state, Data};
 
 connected(cast, {response, [ok, Pid, Msg]}, #data{pid=Pid}=Data) -> 
     debug(connected, {unknown_response, Pid, Msg}),
@@ -191,6 +202,13 @@ event(UserId, Data) ->
              obj_id= UserId,
              body = Data,
              srv_id= nkconf}.
+
+create_rooms(Pid, Rooms) ->
+    Req = #{ cmd => <<"createRooms">>,
+             reqID => nklib_util:uid(),
+             data => [ #{ id => R,
+                          extension => Ext } || {R, Ext} <- Rooms ] },
+    nkconf_mediasoup_protocol:send(Pid, Req).
 
 log(_Level, State, Term) ->
     lager:info("NkCONF mediasoup [~p]: ~p", [State, Term]).

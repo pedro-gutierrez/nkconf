@@ -14,7 +14,13 @@ cmd(<<"login">>, #nkreq{srv_id=?SRV, data=#{user_id:=UserId} = Data} = Req) ->
     case nkservice_api:api(<<"objects/session/start">>, SessData2, Req) of
         {ok, Reply, Req3} ->
             lager:info("Starting session: ~p", [Reply]),
-            {ok, Reply, Req3};
+            case nkconf_util:get_caller(UserId) of 
+                {ok, CallerId} ->
+                    {ok, Reply#{ caller_id => CallerId }, Req3};
+                not_found ->
+                    lager:info("User not found: ~p", [Req3]),
+                    {error, no_caller_id, Req3}
+            end;
         {error, object_not_found, Req3} ->
             lager:info("User not found: ~p", [Req3]),
             {error, user_not_found, Req3};

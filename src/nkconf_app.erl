@@ -10,12 +10,16 @@ start(_StartType, _StartArgs) ->
         listen_port => {integer, 1, 65535},
         listen_path => basepath,
         listen_secure => boolean,
+        rooms => list,
+        callers => list,
         mediasoup => map,
         '__defaults' => #{
           listen_ip => <<"127.0.0.1">>,
           listen_port => 9301,
           listen_path => <<"/">>,
           listen_secure => false,
+          rooms => [],
+          callers => [],
           mediasoup => #{
             host => <<"localhost">>,
             scheme => mediasoup,
