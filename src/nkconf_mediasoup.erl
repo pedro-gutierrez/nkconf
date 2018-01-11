@@ -110,6 +110,11 @@ connected(cast, {response, [ok, Pid, #{ <<"status">> := Status,
     debug(connected, {Status, Pid, Cmd}),
     {keep_state, Data};
 
+connected(cast, {response, [ok, Pid, #{ <<"method">> := <<"ping">>
+                                      }]}, #data{pid=Pid}=Data) -> 
+    debug(connected, {ping, Pid}),
+    {keep_state, Data};
+
 connected(cast, {response, [ok, Pid, Msg]}, #data{pid=Pid}=Data) -> 
     debug(connected, {unknown_response, Pid, Msg}),
     {keep_state, Data};
