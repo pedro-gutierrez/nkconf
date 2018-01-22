@@ -39,8 +39,9 @@ service_api_cmd(<<"nkconf_api">>, #nkreq{cmd = <<"conferencing/", Cmd/binary>>}=
         end),
     {ack, Pid, Req};
 
-service_api_cmd(<<"nkconf_api">>, Req) ->
-    lager:warning("Ignoring request: ~p", [Req]),
+service_api_cmd(<<"nkconf_api">>, _Req) ->
+    %lager:warning("Ignoring request: ~p", [Req]),
+    %
     continue.
 
 service_api_event(_Id, #nkreq{srv_id=?SRV, data=Data}=Req) ->

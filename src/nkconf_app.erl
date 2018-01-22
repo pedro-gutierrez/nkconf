@@ -10,6 +10,7 @@ start(_StartType, _StartArgs) ->
         listen_port => {integer, 1, 65535},
         listen_path => basepath,
         listen_secure => boolean,
+        debug => boolean,
         rooms => list,
         callers => list,
         mediasoup => map,
@@ -20,6 +21,7 @@ start(_StartType, _StartArgs) ->
           listen_secure => false,
           rooms => [],
           callers => [],
+          debug => true,
           mediasoup => #{
             host => <<"localhost">>,
             scheme => mediasoup,

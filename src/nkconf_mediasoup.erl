@@ -5,7 +5,7 @@
 -export([send/1, notify/1, status/0]).
 -export([response/1]).
 -export([connecting/3, connected/3]).
--record(data, {ms, callers, rooms, callback, ref, pid}).
+-record(data, {ms, log, callers, rooms, callback, ref, pid}).
 -include_lib("nkservice/include/nkservice.hrl").
 -include_lib("nkdomain/include/nkdomain.hrl").
 -include_lib("nkevent/include/nkevent.hrl").
@@ -18,28 +18,39 @@ start_link(Config) ->
 
 init([#{ mediasoup := MediasoupConfig,
          callers := CallersConfig,
-         rooms := RoomsConfig }]) ->
+         rooms := RoomsConfig,
+         debug := Debug }]) ->
+
+    io:format("Started mediasoup client with Debug: ~p~n", [Debug]),
+    LogFn = case Debug of 
+                  false -> fun(_, _) -> ok end;
+                  true -> fun(Ctx, Term) -> 
+                            lager:info("NkCONF mediasoup [~p]: ~p", [Ctx, Term])
+                          end
+                end,
+
     {ok, connecting, #data{ms=MediasoupConfig,
                            callers=CallersConfig,
                            rooms=RoomsConfig,
+                           log=LogFn,
                            ref=undefined,
                            pid=undefined,
                            callback={ ?MODULE, response, []}}, [{{timeout, init},0,connect}]}.
 
-connect(#data{ref=Ref}=Data) when Ref =/= undefined ->
-    debug(connecting, {demonitor, Ref}),
+connect(#data{ref=Ref, log=Log}=Data) when Ref =/= undefined ->
+    Log(connecting, {demonitor, Ref}),
     erlang:demonitor(Ref),
     connect(Data#data{ref=undefined});
 
-connect(#data{ms=MediasoupConfig, rooms=Rooms, callback=CB}=Data) ->
+connect(#data{ms=MediasoupConfig, log=Log, rooms=Rooms, callback=CB}=Data) ->
     case nkconf_mediasoup_protocol:start(#{ config => MediasoupConfig}, CB) of
         {ok, Pid} ->
             Ref = erlang:monitor(process, Pid),
-            info(connecting, {connected, Pid, Ref}),
+            Log(connecting, {connected, Pid, Ref}),
             create_rooms(Pid, Rooms),
             {next_state, connected, Data#data{ref=Ref, pid=Pid}};
         {error, Error} ->
-            warn(connecting, {error, Error}),
+            Log(connecting, {error, Error}),
             {next_state, connecting, Data, 
                 [{{timeout, init},1000,connect}]}
     end.
@@ -47,43 +58,43 @@ connect(#data{ms=MediasoupConfig, rooms=Rooms, callback=CB}=Data) ->
 connecting({timeout, init}, connect, Data) ->
     connect(Data);
 
-connecting(info, {'DOWN', Ref, process, Pid, Reason}, #data{ref=Ref, pid=Pid}=Data) -> 
-    warn(connecting, {down, same, Pid, Ref, Reason}),
+connecting(info, {'DOWN', Ref, process, Pid, Reason}, #data{log=Log, ref=Ref, pid=Pid}=Data) -> 
+    Log(connecting, {down, same, Pid, Ref, Reason}),
     connect(Data);
 
-connecting(info, {'DOWN', Ref, process, Pid, Reason}, Data) -> 
-    warn(connecting, {down, other, Pid, Ref, Reason}),
+connecting(info, {'DOWN', Ref, process, Pid, Reason}, #data{log=Log}=Data) -> 
+    Log(connecting, {down, other, Pid, Ref, Reason}),
     {keep_state, Data};
 
 connecting({call, From}, status, Data) -> 
     {keep_state, Data, [{reply, From, {ok, #{ status => connecting }}}]}.
 
-connected(info, {'DOWN', Ref, process, Pid, Reason}, #data{ref=Ref, pid=Pid}=Data) -> 
-    warn(connected, {down, same, Pid, Ref, Reason}),
+connected(info, {'DOWN', Ref, process, Pid, Reason}, #data{log=Log, ref=Ref, pid=Pid}=Data) -> 
+    Log(connected, {down, same, Pid, Ref, Reason}),
     connect(Data);
 
-connected(info, {'DOWN', Ref, process, Pid, Reason}, Data) -> 
-    info(connected, {down, other, Pid, Ref, Reason}),
+connected(info, {'DOWN', Ref, process, Pid, Reason}, #data{log=Log}=Data) -> 
+    Log(connected, {down, other, Pid, Ref, Reason}),
     {keep_state, Data};
 
 connected(cast, {response, [connected, Pid, _]}, #data{pid=Pid}=Data) ->
     {keep_state, Data};
 
-connected(cast, {response, [connected, Pid2, _]}, #data{pid=Pid}=Data) ->
-    warn(connected, {reconnection, Pid, Pid2}),
+connected(cast, {response, [connected, Pid2, _]}, #data{log=Log, pid=Pid}=Data) ->
+    Log(connected, {reconnection, Pid, Pid2}),
     {keep_state, Data};
 
 connected(cast, {response, [disconnected, Pid, _]}, #data{pid=Pid}=Data) ->
     connect(Data);
 
-connected(cast, {response, [disconnected, Pid, _]}, Data) ->
-    info(connected, {disconnected, other, Pid}),
+connected(cast, {response, [disconnected, Pid, _]}, #data{log=Log}=Data) ->
+    Log(connected, {disconnected, other, Pid}),
     {keep_state, Data};
 
 connected(cast, {response, [ok, Pid, #{ <<"status">> := Status,
                                         <<"roomID">> := Room,
                                         <<"peerID">> := UserId,
-                                        <<"method">> := Method } = Msg]}, #data{pid=Pid}=Data) ->
+                                        <<"method">> := Method } = Msg]}, #data{log=Log, pid=Pid}=Data) ->
     EvBody = #{ status => Status,
                 action => Method,
                 room => Room },
@@ -99,24 +110,24 @@ connected(cast, {response, [ok, Pid, #{ <<"status">> := Status,
                   false -> EvBody2
               end,
 
-    debug(connected, {Status, Method, Room}), 
+    Log(connected, {Status, Method, Room}), 
     Ev = event(UserId, EvBody3),
     nkevent:send(Ev),
     {next_state, connected, Data};
 
 connected(cast, {response, [ok, Pid, #{ <<"status">> := Status,
                                         <<"method">> := Cmd 
-                                      }]}, #data{pid=Pid}=Data) -> 
-    debug(connected, {Status, Pid, Cmd}),
+                                      }]}, #data{log=Log, pid=Pid}=Data) -> 
+    Log(connected, {Status, Pid, Cmd}),
     {keep_state, Data};
 
 connected(cast, {response, [ok, Pid, #{ <<"method">> := <<"ping">>
-                                      }]}, #data{pid=Pid}=Data) -> 
-    debug(connected, {ping, Pid}),
+                                      }]}, #data{log=Log, pid=Pid}=Data) -> 
+    Log(connected, {ping, Pid}),
     {keep_state, Data};
 
-connected(cast, {response, [ok, Pid, Msg]}, #data{pid=Pid}=Data) -> 
-    debug(connected, {unknown_response, Pid, Msg}),
+connected(cast, {response, [ok, Pid, Msg]}, #data{log=Log, pid=Pid}=Data) -> 
+    Log(connected, {unknown_response, Pid, Msg}),
     {keep_state, Data};
 
 connected({call, From}, status, Data) -> 
@@ -167,15 +178,15 @@ connected({call, From}, {notify, #{ room := Room,
 
 
 
-terminate(Reason, _, Data) ->
-    warn(terminate, {Reason, Data}),
+terminate(Reason, _, #data{log=Log}=Data) ->
+    Log(terminate, {Reason, Data}),
     ok.
 
 status() -> 
     gen_statem:call(?MODULE, status).
 
 response(Msg) ->
-    debug(response, Msg),
+    %debug(response, Msg),
     gen_statem:cast(?MODULE, {response, Msg}).
 
 send(#nkreq{user_id=UserId, data=Data}=Req) ->
@@ -215,14 +226,14 @@ create_rooms(Pid, Rooms) ->
                           extension => Ext } || {R, Ext} <- Rooms ] },
     nkconf_mediasoup_protocol:send(Pid, Req).
 
-log(_Level, State, Term) ->
-    lager:info("NkCONF mediasoup [~p]: ~p", [State, Term]).
-
-info(State, Term) ->
-    log(info, State, Term).
-
-warn(State, Term) ->
-    log(warning, State, Term).
-
-debug(State, Term) ->
-    log(debug, State, Term).
+%log(_Level, State, Term) ->
+%    lager:info("NkCONF mediasoup [~p]: ~p", [State, Term]).
+%
+%info(State, Term) ->
+%    log(info, State, Term).
+%
+%warn(State, Term) ->
+%    log(warning, State, Term).
+%
+%debug(State, Term) ->
+%    log(debug, State, Term).

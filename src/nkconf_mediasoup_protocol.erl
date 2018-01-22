@@ -38,7 +38,7 @@ start(Server, Callback, Headers) ->
       idle_timeout => 30000,
       protocol => ?MODULE,
       user_state => #{ callback => Callback },
-      debug => true },
+      debug => false },
     lager:info("starting connection to mediasoup on ~p", [Server]),
     case nkpacket:connect(Server, ConnOpts) of
         {ok, Pid} ->
